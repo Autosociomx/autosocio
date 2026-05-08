@@ -2,19 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository status
+## Estado del repositorio
 
-This repository is in an initial state. As of the latest commit, the only tracked file is `README.md`; there is no source code, build configuration, dependency manifest, test suite, or CI setup yet. Treat any new work as greenfield: when you add the first code, also introduce the matching tooling (package manager / build system / linter / test runner) and update this file with the resulting commands.
+Este repositorio está en estado inicial. Al momento del último commit, el único archivo versionado es `README.md`; aún no existe código fuente, configuración de build, manifiesto de dependencias, suite de pruebas ni CI. Trata cualquier trabajo nuevo como greenfield: al agregar el primer código, introduce también el tooling correspondiente (gestor de paquetes / sistema de build / linter / test runner) y actualiza este archivo con los comandos resultantes.
 
-## Product context
+## Contexto del producto
 
-From `README.md` (Spanish): **AutoSocio | Élite Automotriz** is an AI-powered automotive asset optimization platform. The intended users are professional drivers, fleets, workshops, and owners of private and commercial vehicles. The product is described as a single ecosystem that centralizes intelligent management of vehicle maintenance (and related operations — the README is a partial description).
+Tomado de `README.md`: **AutoSocio | Élite Automotriz** es una plataforma de optimización de activos automotrices impulsada por inteligencia artificial. Los usuarios objetivo son conductores profesionales, flotillas, talleres y propietarios de vehículos particulares y comerciales. El producto se describe como un ecosistema único que centraliza la gestión inteligente del mantenimiento vehicular (y operaciones relacionadas — el README es una descripción parcial).
 
-Implications for any code added here:
-- The domain is automotive fleet / vehicle lifecycle management, not generic SaaS — favor naming and modeling around vehicles, drivers, fleets, workshops, maintenance events, etc.
-- The README is in Spanish; user-facing copy should default to Spanish unless the user specifies otherwise. Code identifiers and comments should remain in English.
+Implicaciones para el código que se agregue aquí:
+- El dominio es gestión de flotillas y ciclo de vida vehicular, no SaaS genérico — favorece nombres y modelado en torno a vehículos, conductores, flotillas, talleres, eventos de mantenimiento, etc.
+- El README está en español; los textos de cara al usuario deben estar en español por defecto, salvo que el usuario indique lo contrario. Los identificadores de código y comentarios permanecen en inglés.
 
-## Working in this repo
+## Trabajando en este repositorio
 
-- Active development branch for documentation work: `claude/add-claude-documentation-9Hnqp` (per repository conventions, push changes to the branch the user has designated rather than `main`).
-- There are no commands to build, lint, or test yet. Do not invent placeholder scripts in this file — add them once the corresponding tooling actually exists.
+- Rama activa de desarrollo para tareas de documentación: `claude/add-claude-documentation-9Hnqp` (siguiendo la convención del repositorio, sube los cambios a la rama designada por el usuario en lugar de `main`).
+- Aún no hay comandos de build, lint ni test. No inventes scripts de relleno en este archivo — agrégalos solo cuando exista el tooling correspondiente.
