@@ -7,10 +7,10 @@ import {
   crearOrdenMantenimiento,
   vehiculosDe,
 } from "./store";
+import { reiniciarBaseDeDatos } from "./db";
 
-const g = globalThis as unknown as { __autosocioDb?: unknown };
 afterEach(() => {
-  delete g.__autosocioDb;
+  reiniciarBaseDeDatos();
 });
 
 function vehiculoBase() {

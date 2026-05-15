@@ -22,13 +22,16 @@ Next.js 14 (App Router) + React 18 + TypeScript + Tailwind CSS. Vitest para prue
 - `npm run lint` — ESLint (config `next/core-web-vitals`)
 - Type-check sin emitir: `npx tsc --noEmit`
 
+Persistencia: SQLite vía `better-sqlite3`. La ruta se controla con `AUTOSOCIO_DB`; por defecto `data/autosocio.db` (ignorado por git), y `:memory:` cuando `NODE_ENV=test`. Para empezar de cero borra `data/`; el esquema y la semilla se recrean solos al primer acceso.
+
 ## Arquitectura
 
 El núcleo de negocio vive en `src/lib`, separado del transporte HTTP y de la UI:
 
 - **`src/lib/domain/planes.ts`** — fuente de verdad de los tres planes (`pequena` / `mediana` / `grande`). Cada `Plan` define `maxVehiculos`, `maxTecnicos` (`null` = ilimitado) y `slaHoras`. Toda regla de segmentación por tamaño de empresa se deriva de aquí; **no dupliques límites en otra parte**.
 - **`src/lib/domain/tipos.ts`** — tipos del dominio (`Empresa`, `Vehiculo`, `Tecnico`, `OrdenMantenimiento`) y sus enums.
-- **`src/lib/store.ts`** — store **en memoria** con datos semilla, persistido en `globalThis.__autosocioDb` para sobrevivir al hot-reload. Es la única capa que aplica las reglas de plan: `agregarVehiculo` / `agregarTecnico` lanzan `ErrorLimitePlan` al exceder el plan, y `crearOrdenMantenimiento` calcula `venceEn` a partir del `slaHoras` del plan. Esta es la frontera a reemplazar cuando se introduzca una base de datos real; mantener su superficie pública estable.
+- **`src/lib/db.ts`** — conexión SQLite (`better-sqlite3`), esquema (columnas en `snake_case`), semilla y `reiniciarBaseDeDatos()` (solo para pruebas). La conexión se cachea en `globalThis.__autosocioSqlite` para sobrevivir al hot-reload. **No** consumas `db()` fuera de `store.ts`.
+- **`src/lib/store.ts`** — única capa que aplica las reglas de plan y la única que toca `db()`. Mapea filas `snake_case` → tipos de dominio `camelCase`. `agregarVehiculo` / `agregarTecnico` lanzan `ErrorLimitePlan` al exceder el plan; `crearOrdenMantenimiento` calcula `venceEn` a partir del `slaHoras` del plan. Su superficie pública es el contrato estable: la UI y las rutas API dependen de estas firmas, no de SQLite. Cambiar de motor de almacenamiento solo debe tocar `db.ts` + el mapeo en `store.ts`.
 - **`src/lib/api.ts`** — `manejarError` traduce los errores del dominio a códigos HTTP: `ErrorLimitePlan` → 409, `ErrorNoEncontrado` → 404, otros → 400. Toda ruta API debe enrutar sus errores por aquí.
 
 Flujo de datos:

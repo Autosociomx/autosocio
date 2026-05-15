@@ -1,8 +1,9 @@
-// Store en memoria con datos semilla. Es la única fuente de verdad de la
-// app por ahora; se sustituirá por una base de datos cuando se defina la
-// capa de persistencia. Se guarda en globalThis para sobrevivir al
-// hot-reload de Next.js en desarrollo.
+// Capa de acceso a datos y reglas de negocio. Persiste en SQLite (ver
+// src/lib/db.ts) y es la ÚNICA capa que aplica los límites de plan.
+// Su superficie pública es estable: la UI y las rutas API dependen de
+// estas firmas, no del motor de almacenamiento.
 
+import { db } from "./db";
 import {
   dentroDelLimite,
   obtenerPlan,
@@ -16,13 +17,6 @@ import type {
   Tecnico,
   Vehiculo,
 } from "./domain/tipos";
-
-interface BaseDatos {
-  empresas: Empresa[];
-  vehiculos: Vehiculo[];
-  tecnicos: Tecnico[];
-  ordenes: OrdenMantenimiento[];
-}
 
 export class ErrorLimitePlan extends Error {
   constructor(mensaje: string) {
@@ -38,119 +32,127 @@ export class ErrorNoEncontrado extends Error {
   }
 }
 
-const globalConStore = globalThis as unknown as { __autosocioDb?: BaseDatos };
-
-function generarSemilla(): BaseDatos {
-  const empresas: Empresa[] = [
-    { id: "emp-trans", nombre: "Transportes del Bajío", plan: "pequena", creadaEn: iso(-120) },
-    { id: "emp-log", nombre: "LogiMax Distribución", plan: "mediana", creadaEn: iso(-90) },
-    { id: "emp-flota", nombre: "FlotaNacional S.A.", plan: "grande", creadaEn: iso(-200) },
-  ];
-
-  const vehiculos: Vehiculo[] = [
-    veh("emp-trans", "ABC-101", "Nissan", "NP300", 2021, 84000, "operativo"),
-    veh("emp-trans", "ABC-204", "Toyota", "Hilux", 2022, 41000, "en_taller"),
-    veh("emp-log", "LMX-330", "Freightliner", "M2 106", 2020, 198000, "operativo"),
-    veh("emp-log", "LMX-331", "International", "DuraStar", 2019, 240000, "operativo"),
-    veh("emp-flota", "FN-900", "Kenworth", "T680", 2023, 65000, "operativo"),
-    veh("emp-flota", "FN-901", "Volvo", "VNL 760", 2022, 120000, "fuera_de_servicio"),
-  ];
-
-  const tecnicos: Tecnico[] = [
-    tec("emp-trans", "Mauricio Reyes", "mecanica_general"),
-    tec("emp-log", "Brenda Sandoval", "diagnostico"),
-    tec("emp-log", "Iván Cortez", "electrica"),
-    tec("emp-flota", "Patricia Núñez", "diagnostico"),
-    tec("emp-flota", "Hugo Lara", "mecanica_general"),
-  ];
-
-  const db: BaseDatos = { empresas, vehiculos, tecnicos, ordenes: [] };
-
-  crearOrden(db, {
-    empresaId: "emp-trans",
-    vehiculoId: vehiculos[1].id,
-    tecnicoId: tecnicos[0].id,
-    titulo: "Servicio de 40 mil km",
-    descripcion: "Cambio de aceite, filtros y revisión de frenos.",
-    prioridad: "media",
-  });
-  crearOrden(db, {
-    empresaId: "emp-flota",
-    vehiculoId: vehiculos[5].id,
-    tecnicoId: tecnicos[3].id,
-    titulo: "Falla en sistema de inyección",
-    descripcion: "Unidad fuera de servicio, diagnóstico urgente.",
-    prioridad: "critica",
-  });
-
-  return db;
-}
-
-function db(): BaseDatos {
-  if (!globalConStore.__autosocioDb) {
-    globalConStore.__autosocioDb = generarSemilla();
-  }
-  return globalConStore.__autosocioDb;
-}
-
-// --- Helpers de semilla ---
-
-function iso(diasOffset: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + diasOffset);
-  return d.toISOString();
-}
-
 let contador = 0;
-function id(prefijo: string): string {
+function nuevoId(prefijo: string): string {
   contador += 1;
   return `${prefijo}-${Date.now().toString(36)}${contador}`;
 }
 
-function veh(
-  empresaId: string,
-  placa: string,
-  marca: string,
-  modelo: string,
-  anio: number,
-  km: number,
-  estado: Vehiculo["estado"],
-): Vehiculo {
-  return { id: id("veh"), empresaId, placa, marca, modelo, anio, kilometraje: km, estado };
+// --- Mapeo fila SQLite -> tipo de dominio ---
+
+interface FilaEmpresa {
+  id: string;
+  nombre: string;
+  plan: string;
+  creada_en: string;
+}
+interface FilaVehiculo {
+  id: string;
+  empresa_id: string;
+  placa: string;
+  marca: string;
+  modelo: string;
+  anio: number;
+  kilometraje: number;
+  estado: string;
+}
+interface FilaTecnico {
+  id: string;
+  empresa_id: string;
+  nombre: string;
+  especialidad: string;
+}
+interface FilaOrden {
+  id: string;
+  empresa_id: string;
+  vehiculo_id: string;
+  tecnico_id: string | null;
+  titulo: string;
+  descripcion: string;
+  prioridad: string;
+  estado: string;
+  sla_horas: number;
+  creada_en: string;
+  vence_en: string;
 }
 
-function tec(
-  empresaId: string,
-  nombre: string,
-  especialidad: EspecialidadTecnico,
-): Tecnico {
-  return { id: id("tec"), empresaId, nombre, especialidad };
-}
+const aEmpresa = (f: FilaEmpresa): Empresa => ({
+  id: f.id,
+  nombre: f.nombre,
+  plan: f.plan as TamanoEmpresa,
+  creadaEn: f.creada_en,
+});
+const aVehiculo = (f: FilaVehiculo): Vehiculo => ({
+  id: f.id,
+  empresaId: f.empresa_id,
+  placa: f.placa,
+  marca: f.marca,
+  modelo: f.modelo,
+  anio: f.anio,
+  kilometraje: f.kilometraje,
+  estado: f.estado as Vehiculo["estado"],
+});
+const aTecnico = (f: FilaTecnico): Tecnico => ({
+  id: f.id,
+  empresaId: f.empresa_id,
+  nombre: f.nombre,
+  especialidad: f.especialidad as EspecialidadTecnico,
+});
+const aOrden = (f: FilaOrden): OrdenMantenimiento => ({
+  id: f.id,
+  empresaId: f.empresa_id,
+  vehiculoId: f.vehiculo_id,
+  tecnicoId: f.tecnico_id,
+  titulo: f.titulo,
+  descripcion: f.descripcion,
+  prioridad: f.prioridad as PrioridadOrden,
+  estado: f.estado as OrdenMantenimiento["estado"],
+  slaHoras: f.sla_horas,
+  creadaEn: f.creada_en,
+  venceEn: f.vence_en,
+});
 
 // --- Consultas ---
 
 export function listarEmpresas(): Empresa[] {
-  return [...db().empresas];
+  return (db().prepare("SELECT * FROM empresas ORDER BY creada_en").all() as FilaEmpresa[]).map(
+    aEmpresa,
+  );
 }
 
 export function obtenerEmpresa(empresaId: string): Empresa {
-  const empresa = db().empresas.find((e) => e.id === empresaId);
-  if (!empresa) throw new ErrorNoEncontrado(`Empresa ${empresaId} no encontrada`);
-  return empresa;
+  const fila = db()
+    .prepare("SELECT * FROM empresas WHERE id = ?")
+    .get(empresaId) as FilaEmpresa | undefined;
+  if (!fila) throw new ErrorNoEncontrado(`Empresa ${empresaId} no encontrada`);
+  return aEmpresa(fila);
 }
 
 export function vehiculosDe(empresaId: string): Vehiculo[] {
-  return db().vehiculos.filter((v) => v.empresaId === empresaId);
+  return (
+    db().prepare("SELECT * FROM vehiculos WHERE empresa_id = ?").all(empresaId) as FilaVehiculo[]
+  ).map(aVehiculo);
 }
 
 export function tecnicosDe(empresaId: string): Tecnico[] {
-  return db().tecnicos.filter((t) => t.empresaId === empresaId);
+  return (
+    db().prepare("SELECT * FROM tecnicos WHERE empresa_id = ?").all(empresaId) as FilaTecnico[]
+  ).map(aTecnico);
 }
 
 export function ordenesDe(empresaId: string): OrdenMantenimiento[] {
-  return db()
-    .ordenes.filter((o) => o.empresaId === empresaId)
-    .sort((a, b) => b.creadaEn.localeCompare(a.creadaEn));
+  return (
+    db()
+      .prepare("SELECT * FROM ordenes WHERE empresa_id = ? ORDER BY creada_en DESC")
+      .all(empresaId) as FilaOrden[]
+  ).map(aOrden);
+}
+
+function contar(tabla: "vehiculos" | "tecnicos", empresaId: string): number {
+  const { c } = db()
+    .prepare(`SELECT COUNT(*) c FROM ${tabla} WHERE empresa_id = ?`)
+    .get(empresaId) as { c: number };
+  return c;
 }
 
 export interface ResumenEmpresa {
@@ -161,21 +163,33 @@ export interface ResumenEmpresa {
 }
 
 export function resumenEmpresas(): ResumenEmpresa[] {
-  return listarEmpresas().map((empresa) => ({
-    empresa,
-    totalVehiculos: vehiculosDe(empresa.id).length,
-    totalTecnicos: tecnicosDe(empresa.id).length,
-    ordenesAbiertas: ordenesDe(empresa.id).filter(
-      (o) => o.estado === "abierta" || o.estado === "en_proceso",
-    ).length,
-  }));
+  return listarEmpresas().map((empresa) => {
+    const { c } = db()
+      .prepare(
+        "SELECT COUNT(*) c FROM ordenes WHERE empresa_id = ? AND estado IN ('abierta','en_proceso')",
+      )
+      .get(empresa.id) as { c: number };
+    return {
+      empresa,
+      totalVehiculos: contar("vehiculos", empresa.id),
+      totalTecnicos: contar("tecnicos", empresa.id),
+      ordenesAbiertas: c,
+    };
+  });
 }
 
 // --- Mutaciones con reglas de plan ---
 
 export function crearEmpresa(nombre: string, plan: TamanoEmpresa): Empresa {
-  const empresa: Empresa = { id: id("emp"), nombre, plan, creadaEn: new Date().toISOString() };
-  db().empresas.push(empresa);
+  const empresa: Empresa = {
+    id: nuevoId("emp"),
+    nombre,
+    plan,
+    creadaEn: new Date().toISOString(),
+  };
+  db()
+    .prepare("INSERT INTO empresas (id, nombre, plan, creada_en) VALUES (?,?,?,?)")
+    .run(empresa.id, empresa.nombre, empresa.plan, empresa.creadaEn);
   return empresa;
 }
 
@@ -185,15 +199,27 @@ export function agregarVehiculo(
 ): Vehiculo {
   const empresa = obtenerEmpresa(empresaId);
   const plan = obtenerPlan(empresa.plan);
-  const actuales = vehiculosDe(empresaId).length;
-  if (!dentroDelLimite(actuales, plan.maxVehiculos)) {
+  if (!dentroDelLimite(contar("vehiculos", empresaId), plan.maxVehiculos)) {
     throw new ErrorLimitePlan(
       `El plan "${plan.nombre}" permite máximo ${plan.maxVehiculos} vehículos. ` +
         `Actualiza de plan para agregar más.`,
     );
   }
-  const vehiculo: Vehiculo = { id: id("veh"), empresaId, ...datos };
-  db().vehiculos.push(vehiculo);
+  const vehiculo: Vehiculo = { id: nuevoId("veh"), empresaId, ...datos };
+  db()
+    .prepare(
+      "INSERT INTO vehiculos (id, empresa_id, placa, marca, modelo, anio, kilometraje, estado) VALUES (?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      vehiculo.id,
+      empresaId,
+      vehiculo.placa,
+      vehiculo.marca,
+      vehiculo.modelo,
+      vehiculo.anio,
+      vehiculo.kilometraje,
+      vehiculo.estado,
+    );
   return vehiculo;
 }
 
@@ -204,15 +230,16 @@ export function agregarTecnico(
 ): Tecnico {
   const empresa = obtenerEmpresa(empresaId);
   const plan = obtenerPlan(empresa.plan);
-  const actuales = tecnicosDe(empresaId).length;
-  if (!dentroDelLimite(actuales, plan.maxTecnicos)) {
+  if (!dentroDelLimite(contar("tecnicos", empresaId), plan.maxTecnicos)) {
     throw new ErrorLimitePlan(
       `El plan "${plan.nombre}" permite máximo ${plan.maxTecnicos} técnicos en el ` +
         `equipo de mantenimiento. Actualiza de plan para agregar más.`,
     );
   }
-  const tecnico: Tecnico = { id: id("tec"), empresaId, nombre, especialidad };
-  db().tecnicos.push(tecnico);
+  const tecnico: Tecnico = { id: nuevoId("tec"), empresaId, nombre, especialidad };
+  db()
+    .prepare("INSERT INTO tecnicos (id, empresa_id, nombre, especialidad) VALUES (?,?,?,?)")
+    .run(tecnico.id, empresaId, nombre, especialidad);
   return tecnico;
 }
 
@@ -225,14 +252,27 @@ interface DatosOrden {
   prioridad: PrioridadOrden;
 }
 
-function crearOrden(base: BaseDatos, datos: DatosOrden): OrdenMantenimiento {
-  const empresa = base.empresas.find((e) => e.id === datos.empresaId);
-  if (!empresa) throw new ErrorNoEncontrado(`Empresa ${datos.empresaId} no encontrada`);
+export function crearOrdenMantenimiento(datos: DatosOrden): OrdenMantenimiento {
+  const empresa = obtenerEmpresa(datos.empresaId);
+  const veh = db()
+    .prepare("SELECT empresa_id FROM vehiculos WHERE id = ?")
+    .get(datos.vehiculoId) as { empresa_id: string } | undefined;
+  if (!veh || veh.empresa_id !== datos.empresaId) {
+    throw new ErrorNoEncontrado("Vehículo no pertenece a la empresa indicada");
+  }
+  if (datos.tecnicoId) {
+    const tec = db()
+      .prepare("SELECT empresa_id FROM tecnicos WHERE id = ?")
+      .get(datos.tecnicoId) as { empresa_id: string } | undefined;
+    if (!tec || tec.empresa_id !== datos.empresaId) {
+      throw new ErrorNoEncontrado("Técnico no pertenece a la empresa indicada");
+    }
+  }
+
   const plan = obtenerPlan(empresa.plan);
-  const creadaEn = new Date();
-  const vence = new Date(creadaEn.getTime() + plan.slaHoras * 3600 * 1000);
+  const creada = new Date();
   const orden: OrdenMantenimiento = {
-    id: id("ord"),
+    id: nuevoId("ord"),
     empresaId: datos.empresaId,
     vehiculoId: datos.vehiculoId,
     tecnicoId: datos.tecnicoId,
@@ -241,33 +281,38 @@ function crearOrden(base: BaseDatos, datos: DatosOrden): OrdenMantenimiento {
     prioridad: datos.prioridad,
     estado: "abierta",
     slaHoras: plan.slaHoras,
-    creadaEn: creadaEn.toISOString(),
-    venceEn: vence.toISOString(),
+    creadaEn: creada.toISOString(),
+    venceEn: new Date(creada.getTime() + plan.slaHoras * 3600 * 1000).toISOString(),
   };
-  base.ordenes.push(orden);
+  db()
+    .prepare(
+      "INSERT INTO ordenes (id, empresa_id, vehiculo_id, tecnico_id, titulo, descripcion, prioridad, estado, sla_horas, creada_en, vence_en) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      orden.id,
+      orden.empresaId,
+      orden.vehiculoId,
+      orden.tecnicoId,
+      orden.titulo,
+      orden.descripcion,
+      orden.prioridad,
+      orden.estado,
+      orden.slaHoras,
+      orden.creadaEn,
+      orden.venceEn,
+    );
   return orden;
-}
-
-export function crearOrdenMantenimiento(datos: DatosOrden): OrdenMantenimiento {
-  const vehiculo = db().vehiculos.find((v) => v.id === datos.vehiculoId);
-  if (!vehiculo || vehiculo.empresaId !== datos.empresaId) {
-    throw new ErrorNoEncontrado("Vehículo no pertenece a la empresa indicada");
-  }
-  if (datos.tecnicoId) {
-    const tecnico = db().tecnicos.find((t) => t.id === datos.tecnicoId);
-    if (!tecnico || tecnico.empresaId !== datos.empresaId) {
-      throw new ErrorNoEncontrado("Técnico no pertenece a la empresa indicada");
-    }
-  }
-  return crearOrden(db(), datos);
 }
 
 export function cambiarEstadoOrden(
   ordenId: string,
   estado: OrdenMantenimiento["estado"],
 ): OrdenMantenimiento {
-  const orden = db().ordenes.find((o) => o.id === ordenId);
-  if (!orden) throw new ErrorNoEncontrado(`Orden ${ordenId} no encontrada`);
-  orden.estado = estado;
-  return orden;
+  const res = db()
+    .prepare("UPDATE ordenes SET estado = ? WHERE id = ?")
+    .run(estado, ordenId);
+  if (res.changes === 0) {
+    throw new ErrorNoEncontrado(`Orden ${ordenId} no encontrada`);
+  }
+  return aOrden(db().prepare("SELECT * FROM ordenes WHERE id = ?").get(ordenId) as FilaOrden);
 }
