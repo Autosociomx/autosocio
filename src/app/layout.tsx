@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { sesionActual } from "@/lib/auth";
+import BotonSalir from "@/components/BotonSalir";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,6 +15,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const usuario = sesionActual();
   return (
     <html lang="es">
       <body>
@@ -21,13 +24,20 @@ export default function RootLayout({
             <Link href="/" className="text-lg font-bold tracking-tight">
               AutoSocio <span className="text-marca-acento">| Élite Automotriz</span>
             </Link>
-            <nav className="flex gap-6 text-sm">
-              <Link href="/" className="hover:text-marca-acento">
-                Empresas
-              </Link>
+            <nav className="flex items-center gap-6 text-sm">
               <Link href="/planes" className="hover:text-marca-acento">
                 Planes
               </Link>
+              {usuario ? (
+                <>
+                  <span className="text-slate-300">{usuario.email}</span>
+                  <BotonSalir />
+                </>
+              ) : (
+                <Link href="/login" className="hover:text-marca-acento">
+                  Iniciar sesión
+                </Link>
+              )}
             </nav>
           </div>
         </header>

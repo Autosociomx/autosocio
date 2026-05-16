@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { manejarError } from "@/lib/api";
+import { exigirEmpresa, manejarError } from "@/lib/api";
 import { agregarTecnico } from "@/lib/store";
 import type { EspecialidadTecnico } from "@/lib/domain/tipos";
 
@@ -8,6 +8,7 @@ export async function POST(
   { params }: { params: { id: string } },
 ) {
   try {
+    exigirEmpresa(params.id);
     const b = await req.json();
     const nombre = String(b?.nombre ?? "").trim();
     if (!nombre) throw new Error("El nombre del técnico es obligatorio");

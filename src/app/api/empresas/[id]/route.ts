@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { manejarError } from "@/lib/api";
+import { exigirEmpresa, manejarError } from "@/lib/api";
 import {
   obtenerEmpresa,
   ordenesDe,
@@ -13,6 +13,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    exigirEmpresa(params.id);
     const empresa = obtenerEmpresa(params.id);
     return NextResponse.json({
       empresa,

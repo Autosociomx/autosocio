@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { manejarError } from "@/lib/api";
+import { exigirEmpresa, manejarError } from "@/lib/api";
 import { agregarVehiculo } from "@/lib/store";
 import type { EstadoVehiculo } from "@/lib/domain/tipos";
 
@@ -8,6 +8,7 @@ export async function POST(
   { params }: { params: { id: string } },
 ) {
   try {
+    exigirEmpresa(params.id);
     const b = await req.json();
     const placa = String(b?.placa ?? "").trim();
     const marca = String(b?.marca ?? "").trim();

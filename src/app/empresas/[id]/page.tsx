@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   ErrorNoEncontrado,
   obtenerEmpresa,
@@ -8,12 +8,17 @@ import {
   vehiculosDe,
 } from "@/lib/store";
 import { obtenerPlan, describirLimite } from "@/lib/domain/planes";
+import { sesionActual } from "@/lib/auth";
 import { BadgePlan } from "@/components/Badges";
 import PanelEmpresa from "./PanelEmpresa";
 
 export const dynamic = "force-dynamic";
 
 export default function PaginaEmpresa({ params }: { params: { id: string } }) {
+  const usuario = sesionActual();
+  if (!usuario) redirect("/login");
+  if (usuario.empresaId !== params.id) redirect(`/empresas/${usuario.empresaId}`);
+
   let empresa;
   try {
     empresa = obtenerEmpresa(params.id);

@@ -7,6 +7,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { hashContrasena } from "./password";
 
 const RUTA =
   process.env.AUTOSOCIO_DB ??
@@ -40,6 +41,13 @@ function crearEsquema(conn: Database.Database) {
       nombre TEXT NOT NULL,
       plan TEXT NOT NULL,
       creada_en TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id TEXT PRIMARY KEY,
+      empresa_id TEXT NOT NULL REFERENCES empresas(id),
+      email TEXT NOT NULL UNIQUE,
+      hash TEXT NOT NULL,
+      nombre TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS vehiculos (
       id TEXT PRIMARY KEY,
@@ -84,7 +92,9 @@ function filasVacias(conn: Database.Database): boolean {
 // Reinicia la BD a la semilla. Solo para pruebas.
 export function reiniciarBaseDeDatos() {
   const conn = db();
-  conn.exec("DELETE FROM ordenes; DELETE FROM tecnicos; DELETE FROM vehiculos; DELETE FROM empresas;");
+  conn.exec(
+    "DELETE FROM ordenes; DELETE FROM tecnicos; DELETE FROM vehiculos; DELETE FROM usuarios; DELETE FROM empresas;",
+  );
   sembrar(conn);
 }
 
@@ -107,11 +117,19 @@ function sembrar(conn: Database.Database) {
   const insOrd = conn.prepare(
     "INSERT INTO ordenes (id, empresa_id, vehiculo_id, tecnico_id, titulo, descripcion, prioridad, estado, sla_horas, creada_en, vence_en) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
   );
+  const insUsr = conn.prepare(
+    "INSERT INTO usuarios (id, empresa_id, email, hash, nombre) VALUES (?,?,?,?,?)",
+  );
 
   conn.transaction(() => {
     insEmp.run("emp-trans", "Transportes del Bajío", "pequena", iso(-120));
     insEmp.run("emp-log", "LogiMax Distribución", "mediana", iso(-90));
     insEmp.run("emp-flota", "FlotaNacional S.A.", "grande", iso(-200));
+
+    const clave = hashContrasena("demo1234");
+    insUsr.run("usr-1", "emp-trans", "admin@trans.mx", clave, "Admin Transportes");
+    insUsr.run("usr-2", "emp-log", "admin@logimax.mx", clave, "Admin LogiMax");
+    insUsr.run("usr-3", "emp-flota", "admin@flota.mx", clave, "Admin FlotaNacional");
 
     insVeh.run("veh-1", "emp-trans", "ABC-101", "Nissan", "NP300", 2021, 84000, "operativo");
     insVeh.run("veh-2", "emp-trans", "ABC-204", "Toyota", "Hilux", 2022, 41000, "en_taller");

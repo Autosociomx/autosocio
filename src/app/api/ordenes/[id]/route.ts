@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { manejarError } from "@/lib/api";
-import { cambiarEstadoOrden } from "@/lib/store";
+import { exigirEmpresa, manejarError } from "@/lib/api";
+import { cambiarEstadoOrden, empresaDeOrden } from "@/lib/store";
 import type { EstadoOrden } from "@/lib/domain/tipos";
 
 const ESTADOS: EstadoOrden[] = ["abierta", "en_proceso", "completada", "cancelada"];
@@ -10,6 +10,7 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
+    exigirEmpresa(empresaDeOrden(params.id));
     const b = await req.json();
     const estado = b?.estado as EstadoOrden;
     if (!ESTADOS.includes(estado)) throw new Error("Estado inválido");

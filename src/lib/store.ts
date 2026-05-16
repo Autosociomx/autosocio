@@ -304,6 +304,14 @@ export function crearOrdenMantenimiento(datos: DatosOrden): OrdenMantenimiento {
   return orden;
 }
 
+export function empresaDeOrden(ordenId: string): string {
+  const fila = db()
+    .prepare("SELECT empresa_id FROM ordenes WHERE id = ?")
+    .get(ordenId) as { empresa_id: string } | undefined;
+  if (!fila) throw new ErrorNoEncontrado(`Orden ${ordenId} no encontrada`);
+  return fila.empresa_id;
+}
+
 export function cambiarEstadoOrden(
   ordenId: string,
   estado: OrdenMantenimiento["estado"],
